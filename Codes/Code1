@@ -12,7 +12,6 @@ def start_message(message):
     # Запускаем поток для отправки сообщений
     threading.Thread(target=send_random_message, args=(message.chat.id,)).start()
 
-
 # Функция для отправки случайного сообщения
 def send_random_message(chat_id):
     with open('Стих.txt', 'r', encoding='utf-8') as file:
