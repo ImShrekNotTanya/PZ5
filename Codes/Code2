@@ -1,60 +1,140 @@
-import telebot
+import sys
 import os
+from PyQt6.QtWidgets import (
+    QApplication,
+    QMainWindow,
+    QVBoxLayout,
+    QWidget,
+    QPushButton,
+    QFileDialog,
+    QLabel,
+    QTextEdit,
+    QTabWidget,
+    QFormLayout,
+    QLineEdit,
+    QListWidget,
+    QMessageBox,
+)
+from PyQt6.QtCore import Qt
 
-API_TOKEN = 'ВАШ_ТОКЕН_БОТА'
-bot = telebot.TeleBot(API_TOKEN)
+class FileEditorApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Редактор файлов Telegram бота")
+        self.setGeometry(100, 100, 800, 600)
 
-# Папка для хранения файлов
-FILE_DIRECTORY = 'downloads'
+        self.tabs = QTabWidget()
+        self.setCentralWidget(self.tabs)
 
-# Создание директории, если ее нет
-if not os.path.exists(FILE_DIRECTORY):
-    os.makedirs(FILE_DIRECTORY)
+        self.create_file_scan_tab()
+        self.create_edit_file_tab()
+        self.create_data_form_tab()
+        self.create_read_data_tab()
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, 'Отправьте мне файл для редактирования!')
+        self.tabs.addTab(self.file_scan_tab, "Сканирование папки")
+        self.tabs.addTab(self.edit_file_tab, "Редактирование файла")
+        self.tabs.addTab(self.data_form_tab, "Форма ввода данных")
+        self.tabs.addTab(self.read_data_tab, "Чтение данных")
 
-@bot.message_handler(content_types=['document'])
-def handle_document(message):
-    try:
-        # Получение файла
-        file_info = bot.get_file(message.document.file_id)
-        filename = message.document.file_name
-        file_path = os.path.join(FILE_DIRECTORY, filename)
+        self.current_file_path = ""
 
-        # Скачивание файла
-        downloaded_file = bot.download_file(file_info.file_path)
+    def create_file_scan_tab(self):
+        self.file_scan_tab = QWidget()
+        layout = QVBoxLayout()
 
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
+        self.folder_path = QLineEdit()
+        self.folder_path.setPlaceholderText("Введите путь к папке...")
+        self.scan_button = QPushButton("Сканировать папку")
+        self.scan_button.clicked.connect(self.scan_folder)
 
-        bot.reply_to(message, f'Файл "{filename}" успешно загружен! Вы можете его редактировать.')
-        
-        # Запустите процесс редактирования (визуализация или текстовая обработка)
-        edit_file(file_path)
+        self.file_list = QListWidget()
+        self.file_list.itemClicked.connect(self.load_file_content)
 
-    except Exception as e:
-        bot.reply_to(message, f'Произошла ошибка: {str(e)}')
+        layout.addWidget(self.folder_path)
+        layout.addWidget(self.scan_button)
+        layout.addWidget(self.file_list)
 
-def edit_file(file_path):
-    # Логика для редактирования файла.
-    # Пример: чтение текстового файла и печать его содержимого
-    if file_path.endswith('.txt'):
-        with open(file_path, 'r') as file:
+        self.file_scan_tab.setLayout(layout)
+
+    def scan_folder(self):
+        folder = self.folder_path.text()
+        if os.path.isdir(folder):
+            self.file_list.clear()
+            for filename in os.listdir(folder):
+                if filename.endswith(".py"):  # Например, фильтрация по .py файлами
+                    self.file_list.addItem(filename)
+        else:
+            QMessageBox.warning(self, "Ошибка", "Указанный путь не является папкой!")
+
+    def load_file_content(self, item):
+        self.current_file_path = os.path.join(self.folder_path.text(), item.text())
+        with open(self.current_file_path, 'r', encoding='utf-8') as file:
             content = file.read()
-            print(f"Содержимое файла:\n{content}")
-    
-        # Здесь добавьте вашу логику по редактированию содержимого файла
-        # Например, изменение текста или добавление новых строк
-        new_content = content + "\nЭто новая строка."
-        
-        with open(file_path, 'w') as file:
-            file.write(new_content)
+            self.edit_file_text.setPlainText(content)
 
-        print(f"Файл '{file_path}' успешно отредактирован.")
-    else:
-        print("Файл не является текстовым файлом. Редактирование не выполнено.")
+    def create_edit_file_tab(self):
+        self.edit_file_tab = QWidget()
+        layout = QVBoxLayout()
 
-# Запуск бота
-bot.polling()
+        self.edit_file_text = QTextEdit()
+        self.edit_file_text.setPlaceholderText("Здесь будет содержимое файла...")
+        self.save_button = QPushButton("Сохранить изменения")
+        self.save_button.clicked.connect(self.save_file)
+
+        layout.addWidget(self.edit_file_text)
+        layout.addWidget(self.save_button)
+
+        self.edit_file_tab.setLayout(layout)
+
+    def save_file(self):
+        if self.current_file_path:
+            with open(self.current_file_path, 'w', encoding='utf-8') as file:
+                content = self.edit_file_text.toPlainText()
+                file.write(content)
+                QMessageBox.information(self, "Успех", "Изменения сохранены!")
+        else:
+            QMessageBox.warning(self, "Ошибка", "Сначала выберите файл для редактирования!")
+
+    def create_data_form_tab(self):
+        self.data_form_tab = QWidget()
+        layout = QFormLayout()
+
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setPlaceholderText("Введите API ключ")
+        layout.addRow("API ключ:", self.api_key_input)
+
+        self.submit_button = QPushButton("Сохранить данные")
+        self.submit_button.clicked.connect(self.save_form_data)
+        layout.addWidget(self.submit_button)
+
+        self.data_form_tab.setLayout(layout)
+
+    def save_form_data(self):
+        api_key = self.api_key_input.text()
+        # Здесь можно сохранить или обработать данные API ключа
+        QMessageBox.information(self, "Успех", "Данные сохранены!")
+
+    def create_read_data_tab(self):
+        self.read_data_tab = QWidget()
+        layout = QVBoxLayout()
+
+        self.read_data_text = QTextEdit()
+        self.read_data_text.setReadOnly(True)
+        layout.addWidget(self.read_data_text)
+
+        self.load_data_button = QPushButton("Загрузить данные")
+        self.load_data_button.clicked.connect(self.load_data)
+
+        layout.addWidget(self.load_data_button)
+
+        self.read_data_tab.setLayout(layout)
+
+    def load_data(self):
+        # Здесь вы можете реализовать функционал загрузки данных для чтения
+        self.read_data_text.append("Здесь будут ваши данные!")  # Пример
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    editor = FileEditorApp()
+    editor.show()
+    sys.exit(app.exec())
