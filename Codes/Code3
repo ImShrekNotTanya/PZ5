@@ -1,60 +1,71 @@
-import telebot
-import os
+import logging
+from datetime import datetime
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-API_TOKEN = 'ВАШ_ТОКЕН_БОТА'
-bot = telebot.TeleBot(API_TOKEN)
+# Настройка логирования
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Папка для хранения файлов
-FILE_DIRECTORY = 'downloads'
+# Файл для хранения истории переписки
+CHAT_LOG_FILE = 'chat_history.txt'
 
-# Создание директории, если ее нет
-if not os.path.exists(FILE_DIRECTORY):
-    os.makedirs(FILE_DIRECTORY)
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    bot.reply_to(message, 'Отправьте мне файл для редактирования!')
+# Функция для записи сообщений в файл
+def log_message(user_id, username, message):
+    with open(CHAT_LOG_FILE, 'a', encoding='utf-8') as f:
+        log_entry = f"{datetime.now()} - User ID: {user_id} - {username}: {message}\n"
+        f.write(log_entry)
 
-@bot.message_handler(content_types=['document'])
-def handle_document(message):
+
+# Обработчик текстовых сообщений
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or "Unnamed"
+    message = update.message.text
+
+    log_message(user_id, username, message)
+    await update.message.reply_text("Ваше сообщение записано!")
+
+
+# Команда для генерации отчета
+async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if len(context.args) != 1:
+        await update.message.reply_text("Пожалуйста, введите дату в формате ГГГГ-ММ-ДД.")
+        return
+
+    date_str = context.args[0]
+
     try:
-        # Получение файла
-        file_info = bot.get_file(message.document.file_id)
-        filename = message.document.file_name
-        file_path = os.path.join(FILE_DIRECTORY, filename)
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        await update.message.reply_text("Неверный формат даты. Пожалуйста, используйте ГГГГ-ММ-ДД.")
+        return
 
-        # Скачивание файла
-        downloaded_file = bot.download_file(file_info.file_path)
+    report = ""
+    with open(CHAT_LOG_FILE, 'r', encoding='utf-8') as f:
+        for line in f:
+            if date.strftime("%Y-%m-%d") in line:
+                report += line
 
-        with open(file_path, 'wb') as new_file:
-            new_file.write(downloaded_file)
-
-        bot.reply_to(message, f'Файл "{filename}" успешно загружен! Вы можете его редактировать.')
-        
-        # Запустите процесс редактирования (визуализация или текстовая обработка)
-        edit_file(file_path)
-
-    except Exception as e:
-        bot.reply_to(message, f'Произошла ошибка: {str(e)}')
-
-def edit_file(file_path):
-    # Логика для редактирования файла.
-    # Пример: чтение текстового файла и печать его содержимого
-    if file_path.endswith('.txt'):
-        with open(file_path, 'r') as file:
-            content = file.read()
-            print(f"Содержимое файла:\n{content}")
-    
-        # Здесь добавьте вашу логику по редактированию содержимого файла
-        # Например, изменение текста или добавление новых строк
-        new_content = content + "\nЭто новая строка."
-        
-        with open(file_path, 'w') as file:
-            file.write(new_content)
-
-        print(f"Файл '{file_path}' успешно отредактирован.")
+    if report:
+        await update.message.reply_text(f"Отчет за {date_str}:\n{report.strip()}")
     else:
-        print("Файл не является текстовым файлом. Редактирование не выполнено.")
+        await update.message.reply_text(f"Нет сообщений за {date_str}.")
 
-# Запуск бота
-bot.polling()
+
+# Основная функция для настройки и запуска бота
+def main():
+    # Создайте объект приложения
+    application = Application.builder().token("7898062819:AAGl5eNzuOpX6tT3yyX7-eo_rmBJ6zHFyyU").build()
+
+    # Обработчики команд
+    application.add_handler(CommandHandler("report", report_command))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), text_handler))
+
+    # Запуск бота
+    application.run_polling()
+
+
+if __name__ == "__main__":
+    main()
